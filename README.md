@@ -83,7 +83,8 @@ See `.env.example`:
 The app has no `/auth/register` endpoint by design — the first user is created via seed, and every subsequent user is created by an authenticated admin through `POST /api/v1/users`.
 
 ```bash
-bunx prisma db seed
+bunx prisma db seed      # seeds the superadmin user
+bun run seed:stores      # seeds Muji Estancia + Muji SM Aura
 ```
 
 Runs `prisma/seed.ts` (configured in `prisma.config.ts`). The default credentials are hardcoded in `prisma/seed.ts`:
@@ -95,6 +96,88 @@ Runs `prisma/seed.ts` (configured in `prisma.config.ts`). The default credential
 | Role | `SUPER_ADMIN` |
 
 **Change the password immediately after first login.** Idempotent: if a user with that email already exists, the seed exits without changes — it will **not** overwrite an existing password.
+
+## Orders Module
+
+### REST Endpoints (no auth required)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/v1/orders` | Create order from barcode scan |
+| PATCH | `/api/v1/orders/:id/status` | Update order status |
+| GET | `/api/v1/orders/store/:storeId` | List all orders for a store |
+
+**POST `/api/v1/orders`** body:
+```json
+{ "orderNumber": "1234", "storeId": "<uuid>" }
+```
+`orderNumber` minimum 4 characters. Order is created with status `PREPARING`.
+
+**PATCH `/api/v1/orders/:id/status`** body:
+```json
+{ "status": "SERVED" }
+```
+Valid values: `PREPARING` | `SERVED` | `CANCELLED` | `ON_HOLD`
+
+---
+
+### Real-Time Updates (Socket.IO)
+
+The server runs a Socket.IO gateway on namespace `/orders`. Every status change and new order is broadcast only to clients watching that specific store.
+
+**Install on the React/Vite frontend:**
+```bash
+bun add socket.io-client
+```
+
+**Connect and join a store room:**
+```ts
+import { io } from 'socket.io-client';
+
+const socket = io('http://localhost:8000/orders');
+
+socket.on('connect', () => {
+  socket.emit('join-store', { storeId: '<uuid>' });
+});
+```
+
+**Listen for events:**
+```ts
+socket.on('order:created', (order) => {
+  // add order to local state
+});
+
+socket.on('order:status-updated', (order) => {
+  // update the matching order in local state
+});
+```
+
+**React hook example:**
+```ts
+import { useEffect } from 'react';
+import { io, Socket } from 'socket.io-client';
+
+let socket: Socket;
+
+export function useOrderSocket(storeId: string, onCreated: (o: any) => void, onUpdated: (o: any) => void) {
+  useEffect(() => {
+    socket = io('http://localhost:8000/orders');
+
+    socket.on('connect', () => {
+      socket.emit('join-store', { storeId });
+    });
+
+    socket.on('order:created', onCreated);
+    socket.on('order:status-updated', onUpdated);
+
+    return () => { socket.disconnect(); };
+  }, [storeId]);
+}
+```
+
+Room isolation is enforced server-side — clients only receive events for the store they joined.
+
+---
 
 ## Auth Endpoints
 
@@ -127,11 +210,14 @@ src/
   modules/
     auth/            # Passport strategies, guards, controller, DTOs, types
     users/           # users service + controller + DTOs + types
+    orders/          # orders controller, service, gateway (Socket.IO), DTOs
   app.module.ts
   main.ts
 prisma/
   schema.prisma      # DB schema
   migrations/        # migration history
+  seeders/
+    store.seeder.ts  # standalone store seed (bun run seed:stores)
 prisma.config.ts     # prisma 7 config
 ```
 
