@@ -21,8 +21,44 @@ model User {
 
   createdAt                     DateTime                  @default(now()) @map("created_at")
   updatedAt                     DateTime                  @updatedAt @map("updated_at")
-  
+
   @@map("users")
+}
+
+
+model Store {
+  id                            String                    @id @default(uuid())
+  name                          String
+  location                      String?
+  storeCode                     String                    @unique @map("store_code")
+
+  orders                       Order[]
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  @@map("stores")
+}
+model Order {
+  id                            String                    @id @default(uuid())
+  orderNumber                   String                    @unique @map("order_number")
+  orderStatus                   OrderStatus               @map("order_status")
+
+  storeId                       String                    @map("store_id")
+  store                         Store                     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  @@index([storeId])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PREPARING
+  SERVED
+  CANCELLED
+  ON_HOLD
 }
 
 enum RoleEnum {
