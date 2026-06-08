@@ -17,7 +17,7 @@ CREATE TABLE "stores" (
 CREATE TABLE "orders" (
     "id" TEXT NOT NULL,
     "order_number" TEXT NOT NULL,
-    "order_status" "OrderStatus" NOT NULL,
+    "order_status" "OrderStatus" NOT NULL DEFAULT 'PREPARING',
     "store_id" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
