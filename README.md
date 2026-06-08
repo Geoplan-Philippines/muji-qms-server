@@ -97,6 +97,19 @@ Runs `prisma/seed.ts` (configured in `prisma.config.ts`). The default credential
 
 **Change the password immediately after first login.** Idempotent: if a user with that email already exists, the seed exits without changes — it will **not** overwrite an existing password.
 
+## Stores Module
+
+### REST Endpoints (no auth required)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/v1/stores` | List all stores |
+| GET | `/api/v1/stores/:id` | Get store by ID |
+
+These endpoints are public so the scanner UI can fetch available stores and resolve a `storeId` before joining the Socket.IO room.
+
+---
+
 ## Orders Module
 
 ### REST Endpoints (no auth required)
@@ -210,6 +223,7 @@ src/
   modules/
     auth/            # Passport strategies, guards, controller, DTOs, types
     users/           # users service + controller + DTOs + types
+    stores/          # stores controller + service (public endpoints)
     orders/          # orders controller, service, gateway (Socket.IO), DTOs
   app.module.ts
   main.ts

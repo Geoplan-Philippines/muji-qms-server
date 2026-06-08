@@ -13,6 +13,7 @@ import { PrismaModule } from './core/database/prisma.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { StoresModule } from './modules/stores/stores.module';
 
 @Module({
   imports: [
@@ -21,7 +22,8 @@ import { OrdersModule } from './modules/orders/orders.module';
     PrismaModule,
     UsersModule,
     AuthModule,
-    OrdersModule
+    OrdersModule,
+    StoresModule,
   ],
   controllers: [AppController],
   providers: [
