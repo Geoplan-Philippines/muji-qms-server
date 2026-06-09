@@ -128,9 +128,13 @@ These endpoints are public so the scanner UI can fetch available stores and reso
 
 **PATCH `/api/v1/orders/:id/status`** body:
 ```json
-{ "status": "SERVED" }
+{ "status": "SERVING" }
 ```
-Valid values: `PREPARING` | `SERVED` | `CANCELLED` | `ON_HOLD`
+Valid values: `PREPARING` | `SERVING` | `SERVED` | `CANCELLED` | `ON_HOLD`
+
+Lifecycle: `PREPARING` (scanned) → `SERVING` (at the counter) → `SERVED` (collected / done).
+`ON_HOLD` is a partial-pickup remainder; `CANCELLED` is a genuine cancellation. `SERVED` and
+`CANCELLED` are terminal and drop off the live board.
 
 ---
 

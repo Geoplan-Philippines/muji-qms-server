@@ -56,6 +56,7 @@ model Order {
 
 enum OrderStatus {
   PREPARING
+  SERVING
   SERVED
   CANCELLED
   ON_HOLD
