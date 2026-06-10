@@ -41,7 +41,7 @@ model Store {
 }
 model Order {
   id                            String                    @id @default(uuid())
-  orderNumber                   String                    @unique @map("order_number")
+  orderNumber                   String                    @map("order_number")
   orderStatus                   OrderStatus               @map("order_status") @default(PREPARING)
 
   storeId                       String                    @map("store_id")
