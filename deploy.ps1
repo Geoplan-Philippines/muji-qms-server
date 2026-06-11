@@ -50,8 +50,8 @@ if (-not $SkipMigrate) {
 Write-Host "[backend] Building (nest build)..." -ForegroundColor Cyan
 bun run build
 
-if (-not (Test-Path "dist\main.js")) {
-  throw "Build did not produce dist\main.js. Check the build output above."
+if (-not (Test-Path "dist\src\main.js")) {
+  throw "Build did not produce dist\src\main.js. Check the build output above."
 }
 
 if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
