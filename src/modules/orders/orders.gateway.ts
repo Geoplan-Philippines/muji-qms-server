@@ -34,6 +34,19 @@ export class OrdersGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     client.join(`store:${data.storeId}`);
   }
 
+  @SubscribeMessage('chime:replay')
+  handleChimeReplay(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { storeId: string },
+  ) {
+    if (!data?.storeId) return;
+
+    const room = `store:${data.storeId}`;
+    if (!client.rooms.has(room)) return;
+
+    this.server.to(room).emit('chime:play');
+  }
+
   emitOrderCreated(storeId: string, order: Order) {
     this.server.to(`store:${storeId}`).emit('order:created', order);
   }
