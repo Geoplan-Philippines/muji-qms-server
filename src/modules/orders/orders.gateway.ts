@@ -20,6 +20,10 @@ export class OrdersGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   handleConnection(client: Socket) {
     console.log(`[OrdersGateway] Client connected: ${client.id}`);
+    // Send the server's clock immediately so displays can calibrate on load,
+    // even when the queue is empty. The time source is this LAN machine's own
+    // clock — no internet/NTP required.
+    client.emit('time:sync', { now: Date.now() });
   }
 
   handleDisconnect(client: Socket) {
@@ -32,6 +36,12 @@ export class OrdersGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     @MessageBody() data: { storeId: string },
   ) {
     client.join(`store:${data.storeId}`);
+  }
+
+  @SubscribeMessage('time:request')
+  handleTimeRequest(@ConnectedSocket() client: Socket) {
+    // Lets a display periodically re-sync to correct for device clock drift.
+    client.emit('time:sync', { now: Date.now() });
   }
 
   @SubscribeMessage('chime:replay')
