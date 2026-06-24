@@ -14,6 +14,14 @@ const ACTIVE_STATUSES: OrderStatus[] = [
   OrderStatus.ON_HOLD,
 ];
 
+// Terminal states: the order has left the board for good. No further status
+// change is allowed (a cancel/serve is final), so a PATCH targeting one of
+// these is a 409 conflict.
+const TERMINAL_STATUSES: OrderStatus[] = [
+  OrderStatus.SERVED,
+  OrderStatus.CANCELLED,
+];
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -52,6 +60,12 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
 
+    if (TERMINAL_STATUSES.includes(order.orderStatus)) {
+      throw new ConflictException(
+        `Order is already ${order.orderStatus.toLowerCase()} and cannot change status`,
+      );
+    }
+
     const updated = await this.prisma.order.update({
       where: { id },
       data:  { orderStatus: dto.status },
@@ -62,8 +76,10 @@ export class OrdersService {
   }
 
   async getOrdersByStore(storeId: string) {
+    // Only hydrate the board with orders that still occupy it. SERVED and
+    // CANCELLED are excluded so a page reload can't resurrect them.
     return this.prisma.order.findMany({
-      where:   { storeId },
+      where:   { storeId, orderStatus: { in: ACTIVE_STATUSES } },
       orderBy: { createdAt: 'desc' },
     });
   }
