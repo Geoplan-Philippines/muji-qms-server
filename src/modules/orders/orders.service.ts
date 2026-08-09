@@ -1,10 +1,16 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus } from '@prisma/client';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { Order, OrderStatus, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
 import { OrdersGateway } from './orders.gateway';
 import { CreateOrderDTO } from './dto/create-order.dto';
 import { UpdateOrderStatusDTO } from './dto/update-order-status.dto';
+import { normalizeStoreId } from './store-room';
 
 // Statuses that occupy the board and therefore "hold" an order number.
 // SERVED (collected) and CANCELLED leave the board and free the number for reuse.
@@ -22,19 +28,29 @@ const TERMINAL_STATUSES: OrderStatus[] = [
   OrderStatus.CANCELLED,
 ];
 
+const UNIQUE_VIOLATION = 'P2002';
+
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: OrdersGateway,
   ) {}
 
   async createOrder(dto: CreateOrderDTO) {
-    await this.prisma.store.findUniqueOrThrow({ where: { id: dto.storeId } });
+    const storeId = normalizeStoreId(dto.storeId);
+
+    const store = await this.prisma.store.findUnique({
+      where:  { id: storeId },
+      select: { id: true },
+    });
+    if (!store) throw new NotFoundException('Store not found');
 
     const activeDuplicate = await this.prisma.order.findFirst({
       where: {
-        storeId:     dto.storeId,
+        storeId,
         orderNumber: dto.orderNumber,
         orderStatus: { in: ACTIVE_STATUSES },
       },
@@ -44,15 +60,30 @@ export class OrdersService {
       throw new ConflictException('Order number is already active in the queue');
     }
 
-    const order = await this.prisma.order.create({
-      data: {
-        orderNumber: dto.orderNumber,
-        storeId:     dto.storeId,
-        orderStatus: OrderStatus.PREPARING,
-      },
-    });
+    let order: Order;
+    try {
+      order = await this.prisma.order.create({
+        data: {
+          orderNumber: dto.orderNumber,
+          storeId,
+          orderStatus: OrderStatus.PREPARING,
+        },
+      });
+    } catch (error) {
+      // The check above loses to a concurrent create; the `uniq_active_order_number`
+      // partial unique index is what actually guarantees it. Both paths must end
+      // in 409, because the scanner retries a create whose response it never saw
+      // and reads 409 as "it already landed".
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === UNIQUE_VIOLATION
+      ) {
+        throw new ConflictException('Order number is already active in the queue');
+      }
+      throw error;
+    }
 
-    this.gateway.emitOrderCreated(order.storeId, order);
+    this.publish(() => this.gateway.emitOrderCreated(order.storeId, order), 'order:created');
     return order;
   }
 
@@ -71,16 +102,39 @@ export class OrdersService {
       data:  { orderStatus: dto.status },
     });
 
-    this.gateway.emitStatusUpdated(updated.storeId, updated);
+    this.publish(
+      () => this.gateway.emitStatusUpdated(updated.storeId, updated),
+      'order:status-updated',
+    );
     return updated;
   }
 
   async getOrdersByStore(storeId: string) {
     // Only hydrate the board with orders that still occupy it. SERVED and
     // CANCELLED are excluded so a page reload can't resurrect them.
-    return this.prisma.order.findMany({
-      where:   { storeId, orderStatus: { in: ACTIVE_STATUSES } },
-      orderBy: { createdAt: 'desc' },
-    });
+    //
+    // Retried on a dropped connection: this is the call every display depends on,
+    // and a 5xx here blanks the whole shop. A connection that died while idle
+    // must cost a few hundred milliseconds, not a screen.
+    return this.prisma.readWithRetry('getOrdersByStore', () =>
+      this.prisma.order.findMany({
+        where:   { storeId: normalizeStoreId(storeId), orderStatus: { in: ACTIVE_STATUSES } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
+
+  /**
+   * The write is already committed by the time we broadcast. A failure to reach
+   * the socket layer must not turn a successful mutation into a 5xx — the client
+   * would retry a change that already happened. Log it and let the device's
+   * reconcile poll pick the state up.
+   */
+  private publish(emit: () => void, event: string) {
+    try {
+      emit();
+    } catch (error) {
+      this.logger.error(`Failed to broadcast ${event}: ${(error as Error).message}`);
+    }
   }
 }
