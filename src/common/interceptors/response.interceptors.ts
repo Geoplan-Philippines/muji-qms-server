@@ -8,14 +8,17 @@ import { RAW_RESPONSE_KEY } from '../decorators/raw-response.decorator';
 export class ResponseInterceptor<T> implements NestInterceptor<T, ApiResponse<T> | T> {
   constructor(private readonly reflector: Reflector) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<ApiResponse<T> | T> {
+  intercept(context: ExecutionContext, next: CallHandler<T>): Observable<ApiResponse<T> | T> {
+    // Global interceptors also see socket messages, which have no HTTP response.
+    if (context.getType() !== 'http') return next.handle();
+
     const isRaw = this.reflector.getAllAndOverride<boolean>(RAW_RESPONSE_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isRaw) return next.handle() as Observable<T>;
+    if (isRaw) return next.handle();
 
-    const statusCode = context.switchToHttp().getResponse().statusCode;
+    const statusCode = context.switchToHttp().getResponse<{ statusCode: number }>().statusCode;
 
     return next.handle().pipe(
       map((data) => {

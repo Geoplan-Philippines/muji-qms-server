@@ -91,16 +91,28 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
 
+    // Accept retries after a lost response without resetting the timestamp.
+    if (order.orderStatus === dto.status) return order;
+
     if (TERMINAL_STATUSES.includes(order.orderStatus)) {
       throw new ConflictException(
         `Order is already ${order.orderStatus.toLowerCase()} and cannot change status`,
       );
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id },
-      data:  { orderStatus: dto.status },
-    });
+    let updated: Order;
+    try {
+      updated = await this.prisma.order.update({
+        // Another tablet may have collected/cancelled this order since the read.
+        where: { id, orderStatus: order.orderStatus },
+        data:  { orderStatus: dto.status },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new ConflictException('Order changed on another device; refresh and try again');
+      }
+      throw error;
+    }
 
     this.publish(
       () => this.gateway.emitStatusUpdated(updated.storeId, updated),
